@@ -1,16 +1,21 @@
-import 'package:flutter/material.dart';
 
-void main() {
+import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(); // 🔥 Initialize Firebase
   runApp(const MyApp());
 }
 
-/// Brand colors from your spec
+/// Brand colors
 class AppColors {
-  static const Color darkNavyBlue = Color(0xFF202336); // Dark navy
-  static const Color lightGray = Color(0xFFF2F4FB); // Light gray background
-  static const Color vividPurple = Color(0xFF5750D6); // Accent
-  static const Color white = Color(0xFFFFFFFF); // White
-  static const Color midBlack = Color(0xFF111111); // Almost black
+  static const Color darkNavyBlue = Color(0xFF202336);
+  static const Color lightGray = Color(0xFFF2F4FB);
+  static const Color vividPurple = Color(0xFF5750D6);
+  static const Color white = Color(0xFFFFFFFF);
+  static const Color midBlack = Color(0xFF111111);
 }
 
 class MyApp extends StatelessWidget {
@@ -38,49 +43,6 @@ class MyApp extends StatelessWidget {
           ),
           bodyMedium: TextStyle(color: AppColors.midBlack, fontSize: 14),
         ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.vividPurple,
-            foregroundColor: AppColors.white,
-            minimumSize: const Size(double.infinity, 48),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-        ),
-        textButtonTheme: TextButtonThemeData(
-          style: TextButton.styleFrom(
-            foregroundColor: AppColors.vividPurple,
-            textStyle: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: AppColors.white,
-          labelStyle: const TextStyle(color: AppColors.midBlack),
-          hintStyle: TextStyle(color: Colors.grey.shade600),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey.shade300),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey.shade300),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.vividPurple, width: 1.6),
-          ),
-          errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.redAccent),
-          ),
-          focusedErrorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.redAccent, width: 1.2),
-          ),
-          errorStyle: const TextStyle(
-              color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w600),
-        ),
       ),
       home: const AuthPage(),
     );
@@ -99,21 +61,75 @@ class _AuthPageState extends State<AuthPage> {
   bool obscurePass = true;
 
   final _formKey = GlobalKey<FormState>();
-
   final TextEditingController gymIdCtrl = TextEditingController();
   final TextEditingController emailCtrl = TextEditingController();
   final TextEditingController passCtrl = TextEditingController();
 
-  String? userType; // Member or Staff
-  String? staffRole; // Dropdown if staff selected
+  String? userType;
+  String? staffRole;
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  Future<void> _handleAuth() async {
+    if (_formKey.currentState!.validate()) {
+      try {
+        if (isLogin) {
+          // 🔹 Login
+          await _auth.signInWithEmailAndPassword(
+            email: emailCtrl.text.trim(),
+            password: passCtrl.text.trim(),
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Login successful!")),
+          );
+        } else {
+          // 🔹 Sign Up
+          UserCredential userCred = await _auth.createUserWithEmailAndPassword(
+            email: emailCtrl.text.trim(),
+            password: passCtrl.text.trim(),
+          );
+
+          // Send email verification
+          await userCred.user?.sendEmailVerification();
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Signup successful! Please verify email.")),
+          );
+        }
+      } on FirebaseAuthException catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: ${e.message}")),
+        );
+      }
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    if (emailCtrl.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Enter your email to reset password")),
+      );
+      return;
+    }
+    try {
+      await _auth.sendPasswordResetEmail(email: emailCtrl.text.trim());
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Password reset email sent!")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.of(context).size.width > 900;
 
-    /// The form (white card)
+    /// Form Card
     Widget formCard = Container(
-      padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(20),
@@ -138,22 +154,16 @@ class _AuthPageState extends State<AuthPage> {
             ),
             const SizedBox(height: 24),
 
-            // Gym ID
             TextFormField(
               controller: gymIdCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Gym ID *',
-              ),
+              decoration: const InputDecoration(labelText: 'Gym ID *'),
               validator: (val) => val == null || val.isEmpty ? 'Gym ID is required' : null,
             ),
             const SizedBox(height: 16),
 
-            // Email
             TextFormField(
               controller: emailCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Email *',
-              ),
+              decoration: const InputDecoration(labelText: 'Email *'),
               validator: (val) {
                 if (val == null || val.isEmpty) return 'Email is required';
                 final emailRegex = RegExp(r'^.+@.+\..+$');
@@ -163,7 +173,6 @@ class _AuthPageState extends State<AuthPage> {
             ),
             const SizedBox(height: 16),
 
-            // Password with show/hide
             TextFormField(
               controller: passCtrl,
               obscureText: obscurePass,
@@ -177,17 +186,15 @@ class _AuthPageState extends State<AuthPage> {
                   onPressed: () => setState(() => obscurePass = !obscurePass),
                 ),
               ),
-              validator: (val) =>
-                  val != null && val.length >= 6 ? null : 'Password must be at least 6 characters',
+              validator: (val) => val != null && val.length >= 6
+                  ? null
+                  : 'Password must be at least 6 characters',
             ),
             const SizedBox(height: 16),
 
-            // Dropdown 1: Member or Staff
             DropdownButtonFormField<String>(
               value: userType,
-              decoration: const InputDecoration(
-                labelText: 'Account Type *',
-              ),
+              decoration: const InputDecoration(labelText: 'Account Type *'),
               items: const [
                 DropdownMenuItem(value: 'Member', child: Text('Member')),
                 DropdownMenuItem(value: 'Staff', child: Text('Staff')),
@@ -202,9 +209,7 @@ class _AuthPageState extends State<AuthPage> {
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: staffRole,
-                decoration: const InputDecoration(
-                  labelText: 'Staff Role *',
-                ),
+                decoration: const InputDecoration(labelText: 'Staff Role *'),
                 items: const [
                   DropdownMenuItem(value: 'Trainer', child: Text('Trainer')),
                   DropdownMenuItem(value: 'Owner', child: Text('Owner')),
@@ -215,25 +220,24 @@ class _AuthPageState extends State<AuthPage> {
             ],
             const SizedBox(height: 18),
 
-            // Submit button
             ElevatedButton(
-              onPressed: () {
-                if (_formKey.currentState!.validate()) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(isLogin ? 'Logging in...' : 'Signing up...')),
-                  );
-                }
-              },
+              onPressed: _handleAuth,
               child: Text(isLogin ? 'Sign In' : 'Sign Up'),
             ),
             const SizedBox(height: 8),
 
-            // Toggle login/signup
+            if (isLogin)
+              TextButton(
+                onPressed: _resetPassword,
+                child: const Text("Forgot Password?"),
+              ),
+
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(isLogin ? "Don't have an account? " : 'Already have an account? ',
-                    style: const TextStyle(color: AppColors.midBlack)),
+                Text(isLogin
+                    ? "Don't have an account? "
+                    : 'Already have an account? '),
                 TextButton(
                   onPressed: () => setState(() => isLogin = !isLogin),
                   child: Text(isLogin ? 'Sign Up' : 'Login'),
@@ -245,11 +249,11 @@ class _AuthPageState extends State<AuthPage> {
       ),
     );
 
-    /// Photo block with gradient for readability
+    /// Background
     Widget photoBlock = Container(
       decoration: const BoxDecoration(
         image: DecorationImage(
-          image: AssetImage('assets/gym .png'), // ✅ removed space in file name
+          image: AssetImage('assets/gym.png'), // ✅ fixed asset path
           fit: BoxFit.cover,
         ),
       ),
@@ -259,7 +263,7 @@ class _AuthPageState extends State<AuthPage> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              AppColors.darkNavyBlue.withOpacity(0.7), // stronger navy overlay
+              AppColors.darkNavyBlue.withOpacity(0.7),
               AppColors.darkNavyBlue.withOpacity(0.9),
             ],
           ),
@@ -272,21 +276,19 @@ class _AuthPageState extends State<AuthPage> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             if (!isWide) {
-              // MOBILE: image on top, form below
               return Column(
                 children: [
                   Expanded(flex: 45, child: photoBlock),
                   Expanded(
                     flex: 55,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      padding: const EdgeInsets.all(16),
                       child: formCard,
                     ),
                   ),
                 ],
               );
             }
-            // WIDE: side-by-side
             return Row(
               children: [
                 Expanded(flex: 5, child: photoBlock),
